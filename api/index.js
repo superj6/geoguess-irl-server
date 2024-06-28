@@ -42,10 +42,25 @@ router.get('/user/stats', ensureLogIn('/auth/login'), (req, res) => {
   });
 });
 
-router.post('/game/new', ensureLogIn('/auth/login'), (req, res) => {
-  game.newGame(req.user, req.body.startPos, req.body.radiusLimit, req.body.timeLimit, (e, game) => {
+
+router.get('/user/scores', (req, res) => {
+  game.allUserGames(req.params.user, (e, games) => {
+    if(e) return res.send(e);
+    res.json(games);
+  });
+});
+
+router.post('/game/new', (req, res) => {
+  game.newGame(req.user, req.body.startPos, req.body.radiusLimit, req.body.timeLimit, req.body.gameType, (e, game) => {
     if(e) return res.status(400).send(e);
     res.json(game);
+  });
+});
+
+router.post('/game/:gameid/quit', (req, res) => {
+  game.quitGame(req.params.gameid, (e) => {
+    if(e) return res.stats(400).send(e);
+    res.status(200).send('ok');
   });
 });
 

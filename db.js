@@ -25,7 +25,8 @@ db.serialize(() => {
     starttime DATE,
     endtime DATE,
     radiuslimit INTEGER,
-    timelimit INTEGER
+    timelimit INTEGER,
+    gametype TEXT
   );`);
 });
 

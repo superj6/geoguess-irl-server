@@ -16,13 +16,33 @@ function gameFromRow(row){
   if(row.hasOwnProperty('endtime')) game.endTime = new Date(row.endtime);
   if(row.hasOwnProperty('radiuslimit')) game.radiusLimit = row.radiuslimit;
   if(row.hasOwnProperty('timelimit')) game.timeLimit = row.timelimit;
+  if(row.hasOwnProperty('gametype')) game.gameType = row.gametype;
   return game;
+}
+
+function groupIdFromUser(user){
+  return `user-${user.username}`;
 }
 
 function inGameTime(game){
   let curTime = new Date(), limitTime = new Date(game.startTime);
   limitTime.setMinutes(limitTime.getMinutes() + game.timeLimit);
   return curTime < limitTime && game.startTime > game.endTime;
+}
+
+function inGameQuitTime(game){
+  let curTime = new Date(), limitTime = new Date(game.startTime);
+  limitTime.setSeconds(limitTime.getSeconds() + 20);
+  return curTime < limitTime;
+}
+
+
+function filterGameStats(game){
+  if(!game.endPos){
+    delete game.endPos;
+    if(inGameTime(game)) delete game.solPos;
+  }
+  return game;
 }
 
 function genImageUrl(solPos, direction){
@@ -35,33 +55,56 @@ function genImageUrl(solPos, direction){
 }
 
 function allUserGames(user, cb){
-  let groupId = user.username;
+  let groupId = groupIdFromUser(user);
   db.all('SELECT * FROM games WHERE groupid = ?', [
     groupId,
   ], (e, rows) => {
     if(e) return cb(e);
-    games = rows.map((row) => gameFromRow(row));
+    games = rows.map((row) => filterGameStats(gameFromRow(row)));
     cb(null, games);
   });
 }
 
-function newGame(user, startPos, radiusLimit, timeLimit, cb){
+function newGame(user, startPos, radiusLimit, timeLimit, gameType, cb){
   let gameId = crypto.randomBytes(10).toString('hex');
-  let groupId = user.username;
+  let groupId = user ? groupIdFromUser(user) : 'anonymous';
   let solPos = randomLocation.randomCirclePoint(startPos, radiusLimit);
   let startTime = new Date();
 
-  db.run('INSERT INTO games (gameid, groupId, startpos, solpos, starttime, radiuslimit, timelimit) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+  db.run('INSERT INTO games (gameid, groupId, startpos, solpos, starttime, radiuslimit, timelimit, gametype) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
     gameId,
     groupId,
     JSON.stringify(startPos),
     JSON.stringify(solPos),
     startTime,
     radiusLimit,
-    timeLimit
+    timeLimit,
+    gameType,
   ], (e) => {
     if(e) return cb(e);   
     cb(null, {gameId: gameId, startTime: startTime});
+  });
+}
+
+function quitGame(gameId, cb){
+  db.get('SELECT solpos,starttime,timelimit,endtime FROM games WHERE gameid = ?', [
+    gameId
+  ], (e, row) => {
+    if(e) return cb(e);
+    row = gameFromRow(row);
+    if(!inGameTime(row)){
+      return cb({time: 'out of time'});
+    }
+    if(!inGameQuitTime(row)){
+      return cb({time: 'no quitting now'});
+    }
+
+    db.run('DELETE FROM games WHERE gameid = ?', [
+      gameId
+    ], (e) => {
+      if(e) return cb(e);
+      cb(null);
+    });
   });
 }
 
@@ -109,6 +152,7 @@ function imageStream(gameId, direction, cb){
 module.exports = {
   allUserGames: allUserGames,
   newGame: newGame,
+  quitGame: quitGame,
   submitGame: submitGame,
   imageStream: imageStream
 }
