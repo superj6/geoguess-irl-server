@@ -27,7 +27,7 @@ function groupIdFromUser(user){
 function inGameTime(game){
   let curTime = new Date(), limitTime = new Date(game.startTime);
   limitTime.setMinutes(limitTime.getMinutes() + game.timeLimit);
-  return curTime < limitTime && game.startTime > game.endTime;
+  return (game.gameType == "completion" || curTime < limitTime) && game.startTime > game.endTime;
 }
 
 function inGameQuitTime(game){
@@ -45,13 +45,25 @@ function filterGameStats(game){
   return game;
 }
 
-function genImageUrl(solPos, direction){
-  return 'https://maps.googleapis.com/maps/api/streetview?' + new URLSearchParams({
+function genImageUrl(pos, direction, meta = false){
+  let baseUrl = 'https://maps.googleapis.com/maps/api/streetview';
+  if(meta) baseUrl += '/metadata';
+  return `${baseUrl}?` + new URLSearchParams({
     size: '300x300',
-    location: `${solPos.latitude},${solPos.longitude}`,
+    location: `${pos.latitude},${pos.longitude}`,
     heading: direction,
     key: process.env.MAPS_API
   });
+}
+
+async function getPosInRadius(startPos, radiusLimit, cb){
+  for(let i = 0; i < 5; i++){
+    let pos = randomLocation.randomCirclePoint(startPos, radiusLimit);
+    let url = genImageUrl(pos, 0, true);
+    let metadata = await fetch(url).then((data) => data.json());
+    if(metadata.status === 'OK') return cb(null, metadata.location);
+  }
+  cb({'location': 'loc not found'});
 }
 
 function allUserGames(user, cb){
@@ -66,28 +78,31 @@ function allUserGames(user, cb){
 }
 
 function newGame(user, startPos, radiusLimit, timeLimit, gameType, cb){
-  let gameId = crypto.randomBytes(10).toString('hex');
-  let groupId = user ? groupIdFromUser(user) : 'anonymous';
-  let solPos = randomLocation.randomCirclePoint(startPos, radiusLimit);
-  let startTime = new Date();
+  getPosInRadius(startPos, radiusLimit, (e, solPos) => {
+    if(e) return cb(e);
 
-  db.run('INSERT INTO games (gameid, groupId, startpos, solpos, starttime, radiuslimit, timelimit, gametype) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
-    gameId,
-    groupId,
-    JSON.stringify(startPos),
-    JSON.stringify(solPos),
-    startTime,
-    radiusLimit,
-    timeLimit,
-    gameType,
-  ], (e) => {
-    if(e) return cb(e);   
-    cb(null, {gameId: gameId, startTime: startTime});
+    let gameId = crypto.randomBytes(10).toString('hex');
+    let groupId = user ? groupIdFromUser(user) : 'anonymous';
+    let startTime = new Date();
+
+    db.run('INSERT INTO games (gameid, groupId, startpos, solpos, starttime, radiuslimit, timelimit, gametype) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+      gameId,
+      groupId,
+      JSON.stringify(startPos),
+      JSON.stringify(solPos),
+      startTime,
+      radiusLimit,
+      timeLimit,
+      gameType,
+    ], (e) => {
+      if(e) return cb(e);   
+      cb(null, {gameId: gameId, startTime: startTime});
+    });
   });
 }
 
 function quitGame(gameId, cb){
-  db.get('SELECT solpos,starttime,timelimit,endtime FROM games WHERE gameid = ?', [
+  db.get('SELECT solpos,starttime,timelimit,endtime,gametype FROM games WHERE gameid = ?', [
     gameId
   ], (e, row) => {
     if(e) return cb(e);
@@ -109,7 +124,7 @@ function quitGame(gameId, cb){
 }
 
 function submitGame(gameId, endPos, cb){
-  db.get('SELECT solpos,starttime,timelimit,endtime FROM games WHERE gameid = ?', [
+  db.get('SELECT solpos,starttime,timelimit,endtime,gametype FROM games WHERE gameid = ?', [
     gameId
   ], (e, row) => {
     if(e) return cb(e);
