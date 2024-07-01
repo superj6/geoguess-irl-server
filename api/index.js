@@ -57,6 +57,13 @@ router.post('/game/new', (req, res) => {
   });
 });
 
+router.get('/game/:gameid/stats', (req, res) => {
+  game.getGameStats(req.params.gameid, (e, game) => {
+    if(e) return res.send(e);
+    res.json(game);
+  });
+});
+
 router.post('/game/:gameid/quit', (req, res) => {
   game.quitGame(req.params.gameid, (e) => {
     if(e) return res.stats(400).send(e);

@@ -27,7 +27,7 @@ function groupIdFromUser(user){
 function inGameTime(game){
   let curTime = new Date(), limitTime = new Date(game.startTime);
   limitTime.setMinutes(limitTime.getMinutes() + game.timeLimit);
-  return (game.gameType == "completion" || curTime < limitTime) && game.startTime > game.endTime;
+  return curTime < limitTime && game.startTime > game.endTime;
 }
 
 function inGameQuitTime(game){
@@ -61,7 +61,10 @@ async function getPosInRadius(startPos, radiusLimit, cb){
     let pos = randomLocation.randomCirclePoint(startPos, radiusLimit);
     let url = genImageUrl(pos, 0, true);
     let metadata = await fetch(url).then((data) => data.json());
-    if(metadata.status === 'OK') return cb(null, metadata.location);
+    if(metadata.status === 'OK') return cb(null, {
+      latitude: metadata.location.lat,
+      longitude: metadata.location.lng
+    });
   }
   cb({'location': 'loc not found'});
 }
@@ -72,8 +75,19 @@ function allUserGames(user, cb){
     groupId,
   ], (e, rows) => {
     if(e) return cb(e);
-    games = rows.map((row) => filterGameStats(gameFromRow(row)));
+    let games = rows.map((row) => filterGameStats(gameFromRow(row)));
     cb(null, games);
+  });
+}
+
+
+function getGameStats(gameId, cb){
+  db.get('SELECT * FROM games WHERE gameid = ?', [
+    gameId,
+  ], (e, row) => {
+    if(e) return cb(e);
+    let game = filterGameStats(gameFromRow(row));
+    cb(null, game);
   });
 }
 
@@ -147,7 +161,7 @@ function submitGame(gameId, endPos, cb){
 }
 
 function imageStream(gameId, direction, cb){
-  db.get('SELECT solpos,starttime,timelimit,endtime FROM games WHERE gameid = ?', [
+  db.get('SELECT solpos,starttime,timelimit,endtime,gametype FROM games WHERE gameid = ?', [
     gameId
   ], (e, row) => {
     if(e) return cb(e);
@@ -169,5 +183,6 @@ module.exports = {
   newGame: newGame,
   quitGame: quitGame,
   submitGame: submitGame,
-  imageStream: imageStream
+  imageStream: imageStream,
+  getGameStats: getGameStats,
 }
