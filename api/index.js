@@ -43,7 +43,7 @@ router.get('/user/stats', ensureLogIn('/auth/login'), (req, res) => {
 });
 
 
-router.get('/user/scores', ensureLogIn('/auth/login'), (req, res) => {
+router.get('/user/:username/scores', ensureLogIn('/auth/login'), (req, res) => {
   game.allUserGames({username: req.params.username}, (e, games) => {
     if(e) return res.send(e);
     res.json(games);
